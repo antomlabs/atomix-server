@@ -6,6 +6,7 @@ import hashlib
 import os
 from decimal import Decimal, getcontext
 from math import floor
+from flask import Flask, jsonify
 
 getcontext().prec = 10
 
@@ -320,7 +321,28 @@ class ClientHandler(threading.Thread):
             self.conn_manager.remove_connection(ip, username)
             self.conn.close()
 
-def run_server(ip="0.0.0.0", port=5050):
+app = Flask(__name__)
+
+blockchain = None
+user_manager = None
+conn_manager = None
+
+@app.route("/health")
+def health():
+    return jsonify({
+        "status": "running",
+        "blocks": len(blockchain.chain) if blockchain else 0,
+        "users": len(user_manager.users) if user_manager else 0,
+        "miners_online": conn_manager.count_miners() if conn_manager else 0
+    })
+
+def run_http():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
+
+def run_tcp_server(ip="0.0.0.0", port=5050):
+    global blockchain, user_manager, conn_manager
+
     blockchain = Blockchain()
     user_manager = UserManager()
     conn_manager = ConnectionManager()
@@ -328,7 +350,7 @@ def run_server(ip="0.0.0.0", port=5050):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind((ip, port))
     sock.listen(5)
-    print(f"[Servidor] Escuchando en {ip}:{port}")
+    print(f"[Servidor TCP] Escuchando en {ip}:{port}")
 
     while True:
         conn, addr = sock.accept()
@@ -336,4 +358,5 @@ def run_server(ip="0.0.0.0", port=5050):
         handler.start()
 
 if __name__ == "__main__":
-    run_server()
+    threading.Thread(target=run_http, daemon=True).start()
+    run_tcp_server()
