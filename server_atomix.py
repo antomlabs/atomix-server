@@ -231,12 +231,32 @@ class ClientHandler(threading.Thread):
         self.user_manager = user_manager
         self.conn_manager = conn_manager
 
+    def receive_full_message(self):
+        buffer = b""
+        while True:
+            part = self.conn.recv(4096)
+            if not part:
+                break
+            buffer += part
+            try:
+                # Intentamos decodificar y parsear JSON
+                msg = json.loads(buffer.decode())
+                return msg
+            except json.JSONDecodeError:
+                # Si no está completo, seguimos recibiendo
+                continue
+        return None
+
     def run(self):
         ip = self.addr[0]
         username = ""
         try:
-            data = self.conn.recv(65536).decode()
-            msg = json.loads(data)
+            msg = self.receive_full_message()
+            if msg is None:
+                print(f"[Servidor] Mensaje JSON inválido o incompleto del cliente {ip}")
+                self.conn.close()
+                return
+
             mtype = msg.get("type")
 
             if mtype == "request_chain":
@@ -360,3 +380,4 @@ def run_tcp_server(ip="0.0.0.0", port=5050):
 if __name__ == "__main__":
     threading.Thread(target=run_http, daemon=True).start()
     run_tcp_server()
+
